@@ -1,13 +1,15 @@
 import java.util.ArrayList;
-import java.util.function.Function;
+import java.util.Scanner;
+import java.util.concurrent.Semaphore;
 
-class Traffic_Light_Controlled_Intersection {
+class TrafficLight {
 
 
         // Signal maintains the road which is green at the moment
         private final Signal signal;
+        private Semaphore semSignal = new Semaphore(1);
 
-        public Traffic_Light_Controlled_Intersection() {
+        public TrafficLight() {
             signal = new Signal();
         }
 
@@ -17,14 +19,14 @@ class Traffic_Light_Controlled_Intersection {
                 int direction,       // Direction of the car
                 Runnable turnGreen,  // Use turnGreen.run() to turn light to green on current road
                 Runnable crossCar    // Use crossCar.run() to make car cross the intersection
-        ) {
-            synchronized (signal) {
+        ) throws InterruptedException {
+            semSignal.acquire();
                 if (signal.greenRoadA != roadId) {
                     turnGreen.run();
                     signal.greenRoadA = roadId;
                 }
                 crossCar.run();
-            }
+            semSignal.release();
         }
 
         class Signal {
@@ -37,25 +39,25 @@ class Traffic_Light_Controlled_Intersection {
 }
 
 class Car extends Thread{
-    private Traffic_Light_Controlled_Intersection t;
+    private TrafficLight t;
     private int carId;
     private int direction;
     private int arrivalTime;
     private int roadId;
     private static Runnable turnGreen;
     private Runnable crossCar;
-    private ArrayList<String> array;
 
-    public Car(Traffic_Light_Controlled_Intersection t,ArrayList<String> a, int carId, int direction, int arrivalTime, Runnable tG){
+
+    public Car(TrafficLight t, ArrayList<String> a, ArrayList<String> c, int carId, int direction, int arrivalTime, Runnable tG){
         this.carId = carId;
         this.direction = direction;
         this.roadId = direction == 1 || direction == 2 ? 1 : 2;
         this.arrivalTime = arrivalTime;
         this.t = t;
-        array = a;
         turnGreen = tG;
         crossCar = () -> {
             a.add("Car " + carId +" Has Passed Road " + (roadId == 1 ? 'A' : 'B') + " In Direction " + direction);
+            c.add(roadId == 1 ? "A" : "B" + carId);
         };
     }
 
@@ -76,27 +78,67 @@ public class TLCI {
     public static final int roadB = 2;
     private static int currentRoad = roadA;
 
-    public static void main(String[] args) throws InterruptedException {
-        Traffic_Light_Controlled_Intersection t = new Traffic_Light_Controlled_Intersection();
-        ArrayList<String> array = new ArrayList<>();
+    public static void main(String[] args) throws Exception {
+        TrafficLight t = new TrafficLight();
+        ArrayList<String> printArray = new ArrayList<>();
+        ArrayList<String> checkArray = new ArrayList<>();
         Runnable turnGreen = () -> {
             if(currentRoad == roadA){
                 currentRoad = roadB;
-                array.add("Traffic Light On Road B Is Green");
+                printArray.add("Traffic Light On Road B Is Green");
+                checkArray.add("TB");
             }
             else{
                 currentRoad = roadA;
-                array.add("Traffic Light On Road A Is Green");
+                printArray.add("Traffic Light On Road A Is Green");
+                checkArray.add("TA");
             }
         };
 
-        int[] cars = {1,3,5,2,4}, directions = {2,1,2,4,3}, arrivalTimes = {10,20,30,40,50};
-        for (int i = 0; i < cars.length; i++) {
-            Car c = new Car(t,array,cars[i],directions[i],arrivalTimes[i],turnGreen);
+        Scanner sc = new Scanner(System.in);
+        ArrayList<Integer> cars = new ArrayList<>();
+        ArrayList<Integer> directions = new ArrayList<>();
+        ArrayList<Integer> arrivalTimes = new ArrayList<>();
+        for (int line = 0; line < 3; line++) {
+            String[] string = sc.nextLine().split(",");
+            for (int j = 0; j < string.length; j++) {
+                if(line == 0) {
+                    cars.add(Integer.valueOf(string[j]));
+                }else if (line == 1) {
+                    directions.add(Integer.valueOf(string[j]));
+                }
+                else {
+                    arrivalTimes.add(Integer.valueOf(string[j]));
+                }
+            }
+        }
+        for (int i = 0; i < cars.size(); i++) {
+            Car c = new Car(t,printArray,checkArray,cars.get(i),directions.get(i),arrivalTimes.get(i),turnGreen);
             c.start();
         }
-        Thread.sleep(5000);
-        System.out.println(array);
+        Thread.sleep(3000);
+
+        //checking the result
+        char greenRoad = 'A';
+        for (String entry : checkArray) {
+            if (entry.charAt(0) == 'T') {  //light switching
+                if(entry.charAt(1) == 'B'){
+                    greenRoad = 'B';
+                }
+                else {
+                    greenRoad = 'A';
+                }
+            }
+            else { //car has passed
+                if((entry.charAt(0) == 'A' && greenRoad == 'B') || (entry.charAt(0) == 'B' && greenRoad == 'A')) {
+                    throw new Exception("Car " + entry.charAt(1) + " must not cross on RED!");
+                }
+            }
+        }
+        for (String string:
+             printArray) {
+            System.out.println(string);
+        }
     }
 
 
